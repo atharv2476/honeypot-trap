@@ -4,7 +4,7 @@ import db
 
 bp = Blueprint("dash", __name__)
 W = ("ip_masked NOT LIKE '127.%' AND ua NOT LIKE 'Go-http-client%' "
-     "AND path NOT LIKE '/dashboard%'")
+     "AND path NOT LIKE '/dashboard%' AND ua NOT LIKE '%UptimeRobot%'")
 
 def _ok():
     pw = os.environ.get("DASH_PASSWORD", "")
