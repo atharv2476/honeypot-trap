@@ -4,6 +4,8 @@ from alerts import handle
 from flask import Flask, request, Response
 
 app = Flask(__name__)
+from dashboard import bp as dash_bp
+app.register_blueprint(dash_bp)
 app.config["MAX_CONTENT_LENGTH"] = 10_000
 
 SECRET_RE = re.compile(r'(?i)(pass(?:word)?|pwd|secret|token)(["\']?\s*[:=]\s*["\']?)[^&"\'\s,}]+')
