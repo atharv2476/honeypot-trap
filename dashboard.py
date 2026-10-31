@@ -12,6 +12,10 @@ for _x in os.environ.get("EXCLUDE_MASKED", "").split(","):
     if _x and all(ch in "0123456789.x:abcdef" for ch in _x):
         W += f" AND ip_masked <> '{_x}'"
 
+_sf = os.environ.get("STATS_FROM", "").strip()
+if _sf and all(ch in "0123456789-:T+.Z" for ch in _sf):
+    W += f" AND ts >= '{_sf}'"
+
 def _ok():
     pw = os.environ.get("DASH_PASSWORD", "")
     a = request.authorization
