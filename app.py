@@ -1,4 +1,6 @@
 import json, re, hashlib, datetime
+from classify import classify
+from alerts import handle
 from flask import Flask, request, Response
 
 app = Flask(__name__)
@@ -24,6 +26,17 @@ def safe_body():
     except Exception:
         return "<unreadable or too large>"
 
+CANARIES = ("canary_db_pass_91af", "canary_api_key_55c2")
+
+def canary_used():
+    try:
+        hdrs = " ".join(v for _, v in request.headers.items())
+        blob = " ".join([request.full_path, hdrs, " ".join(request.form.values()),
+                         request.get_data(as_text=True)[:2000]])
+    except Exception:
+        return False
+    return any(c in blob for c in CANARIES)
+
 @app.before_request
 def log_hit():
     rec = {
@@ -34,6 +47,10 @@ def log_hit():
         "ua": request.headers.get("User-Agent", "")[:200],
         "body": safe_body() if request.method in ("POST", "PUT", "PATCH") else "",
     }
+    cls = classify(rec)
+    rec["primary"] = cls["primary"]
+    rec["sev"] = cls["sev"]
+    rec["canary"] = canary_used()
     line = json.dumps(rec, ensure_ascii=False)
     print(line, flush=True)
     try:
@@ -41,6 +58,7 @@ def log_hit():
             f.write(line + "\n")
     except Exception:
         pass
+    handle(rec)
 
 LOGIN = """<!DOCTYPE html><html><head><title>ACME Admin</title></head><body>
 <h2>ACME Admin Login</h2>%s
