@@ -6,3 +6,4 @@ export.csv
 .env
 *.env
 *.bak*
+*.bak*
