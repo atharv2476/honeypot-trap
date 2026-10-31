@@ -26,6 +26,12 @@ def safe_body():
     except Exception:
         return "<unreadable or too large>"
 
+import db
+try:
+    db.init()
+except Exception as e:
+    print("db init skipped:", type(e).__name__, flush=True)
+
 CANARIES = ("canary_db_pass_91af", "canary_api_key_55c2")
 
 def canary_used():
@@ -58,6 +64,7 @@ def log_hit():
             f.write(line + "\n")
     except Exception:
         pass
+    db.save_hit(rec)
     handle(rec)
 
 LOGIN = """<!DOCTYPE html><html><head><title>ACME Admin</title></head><body>

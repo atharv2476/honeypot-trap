@@ -1,47 +1,41 @@
-import os, json, threading
-URL = os.environ.get("DATABASE_URL")
-try:
-    import psycopg
-except Exception:
-    psycopg = None
+import os, hashlib, ssl, threading
+from datetime import datetime
+from urllib.parse import urlparse
+import pg8000.native
 
-def enabled():
-    return bool(URL and psycopg)
+SALT = os.environ.get("IP_SALT", "honeypot")
 
 def _conn():
-    return psycopg.connect(URL, connect_timeout=5)
+    u = urlparse(os.environ["DATABASE_URL"])
+    ctx = ssl.create_default_context() if "." in (u.hostname or "") else None
+    return pg8000.native.Connection(
+        user=u.username, password=u.password, host=u.hostname,
+        port=u.port or 5432, database=u.path.lstrip("/"),
+        ssl_context=ctx, timeout=5)
 
 def init():
-    if not enabled():
-        return
-    try:
-        with _conn() as c:
-            c.execute("""CREATE TABLE IF NOT EXISTS hits (
-                id BIGSERIAL PRIMARY KEY, ts TIMESTAMPTZ, ip TEXT, method TEXT, path TEXT,
-                ua TEXT, body TEXT, category TEXT, sev TEXT, canary BOOLEAN)""")
-    except Exception as e:
-        print("db init error:", e, flush=True)
+    c = _conn()
+    c.run("""CREATE TABLE IF NOT EXISTS hits (
+        id SERIAL PRIMARY KEY, ts TIMESTAMPTZ, ip_masked TEXT, ip_hash TEXT,
+        method TEXT, path TEXT, ua TEXT, category TEXT, sev TEXT, canary BOOLEAN)""")
+    c.close()
+
+def _mask(ip):
+    p = ip.split(".")
+    return ".".join(p[:3] + ["x"]) if len(p) == 4 else ip.split(":")[0] + ":x"
 
 def _save(rec):
     try:
-        body = rec["body"] if isinstance(rec["body"], str) else json.dumps(rec["body"], ensure_ascii=False)
-        with _conn() as c:
-            c.execute("INSERT INTO hits (ts, ip, method, path, ua, body, category, sev, canary) "
-                      "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                      (rec["ts"], rec["ip"], rec["method"], rec["path"], rec["ua"], body,
-                       rec["primary"], rec["sev"], rec["canary"]))
+        c = _conn()
+        c.run("""INSERT INTO hits (ts, ip_masked, ip_hash, method, path, ua, category, sev, canary)
+                 VALUES (:ts, :m, :h, :me, :p, :ua, :cat, :sev, :can)""",
+              ts=datetime.fromisoformat(rec["ts"]), m=_mask(rec["ip"]),
+              h=hashlib.sha256((SALT + rec["ip"]).encode()).hexdigest()[:12],
+              me=rec["method"], p=rec["path"], ua=rec["ua"],
+              cat=rec["primary"], sev=rec["sev"], can=bool(rec["canary"]))
+        c.close()
     except Exception as e:
-        print("db save error:", e, flush=True)
+        print("db error:", type(e).__name__, flush=True)
 
-def save(rec):
-    if enabled():
-        threading.Thread(target=_save, args=(rec,), daemon=True).start()
-
-def stats():
-    if not enabled():
-        return {"db": "off"}
-    with _conn() as c:
-        total = c.execute("SELECT count(*) FROM hits").fetchone()[0]
-        first = c.execute("SELECT min(ts) FROM hits").fetchone()[0]
-        rows = c.execute("SELECT category, count(*) FROM hits GROUP BY category ORDER BY 2 DESC").fetchall()
-    return {"total": total, "since": str(first), "by_category": dict(rows)}
+def save_hit(rec):
+    threading.Thread(target=_save, args=(dict(rec),), daemon=True).start()
