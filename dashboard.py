@@ -6,6 +6,12 @@ bp = Blueprint("dash", __name__)
 W = ("ip_masked NOT LIKE '127.%' AND ua NOT LIKE 'Go-http-client%' "
      "AND path NOT LIKE '/dashboard%' AND ua NOT LIKE '%UptimeRobot%'")
 
+W += " AND ua NOT LIKE 'atharv-test%'"
+for _x in os.environ.get("EXCLUDE_MASKED", "").split(","):
+    _x = _x.strip()
+    if _x and all(ch in "0123456789.x:abcdef" for ch in _x):
+        W += f" AND ip_masked <> '{_x}'"
+
 def _ok():
     pw = os.environ.get("DASH_PASSWORD", "")
     a = request.authorization
