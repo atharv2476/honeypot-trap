@@ -3,3 +3,6 @@ __pycache__/
 hits.jsonl
 classified.json
 export.csv
+.env
+*.env
+*.bak*
